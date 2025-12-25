@@ -1,12 +1,14 @@
 use crate::models::tweet::TweetResponse;
 use sqlx::PgPool;
 
+#[derive(Clone)]
+
 pub struct TweetRepository {
     pool: PgPool,
 }
 
 impl TweetRepository {
-    pub fn new(Pool: PgPool) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
     pub async fn create(&self, content: String) -> Result<TweetResponse, sqlx::Error> {

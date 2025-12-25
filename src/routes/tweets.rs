@@ -1,14 +1,13 @@
 use axum::{
-    Json,
-    extract::State,
+    extract::{Json, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-
-use sqlx::PgPool;
-
-use crate::models::tweet::{CreateTweetRequest, TweetResponse};
 use serde::Serialize;
+
+use crate::{
+    app::AppState, models::tweet::CreateTweetRequest, services::tweet_service::TweetServiceError,
+};
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -16,21 +15,34 @@ struct ErrorResponse {
 }
 
 pub async fn create_tweet(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Json(payload): Json<CreateTweetRequest>,
 ) -> Response {
-    let rec = sqlx::query!(
-        "INSERT INTO tweets (content) VALUES ($1) RETURNING id, content",
-        payload.content
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    //temp fake ID (DB comes later)
-    let tweet = TweetResponse {
-        id: rec.id as u64,
-        content: rec.content,
-    };
+    match state.tweet_service.create_tweet(payload.content).await {
+        Ok(tweet) => (StatusCode::CREATED, Json(tweet)).into_response(),
 
-    (StatusCode::CREATED, Json(tweet)).into_response()
+        Err(TweetServiceError::EmptyContent) => (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Tweet content cannot be empty".into(),
+            }),
+        )
+            .into_response(),
+
+        Err(TweetServiceError::ContentTooLong) => (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Tweet exceeds 280 characters".into(),
+            }),
+        )
+            .into_response(),
+
+        Err(TweetServiceError::DatabaseError) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Internal server error".into(),
+            }),
+        )
+            .into_response(),
+    }
 }
